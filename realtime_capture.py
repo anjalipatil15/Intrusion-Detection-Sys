@@ -2,22 +2,42 @@ from scapy.all import sniff, IP, TCP, UDP
 import pandas as pd
 import joblib
 from collections import defaultdict
+import csv
 import time
 
-# Load trained IDS model
+# Load trained pipeline
 model = joblib.load("ids_model.pkl")
 
 print("Model loaded successfully")
 print("Starting packet capture...\n")
 
-# Traffic tracking memory
-
+# Traffic memory
 connection_count = defaultdict(int)
 service_count = defaultdict(int)
 port_scan_tracker = defaultdict(set)
 
-# Feature Extraction
+# NSL-KDD column order
+columns = [
+"duration","protocol_type","service","flag","src_bytes","dst_bytes","land",
+"wrong_fragment","urgent","hot","num_failed_logins","logged_in","num_compromised",
+"root_shell","su_attempted","num_root","num_file_creations","num_shells",
+"num_access_files","num_outbound_cmds","is_host_login","is_guest_login",
+"count","srv_count","serror_rate","srv_serror_rate","rerror_rate",
+"srv_rerror_rate","same_srv_rate","diff_srv_rate","srv_diff_host_rate",
+"dst_host_count","dst_host_srv_count","dst_host_same_srv_rate",
+"dst_host_diff_srv_rate","dst_host_same_src_port_rate",
+"dst_host_srv_diff_host_rate","dst_host_serror_rate",
+"dst_host_srv_serror_rate","dst_host_rerror_rate",
+"dst_host_srv_rerror_rate"
+]
 
+# Log attacks for dashboard
+def log_attack(src, dst, attack):
+    with open("traffic_log.csv", "a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([time.time(), src, dst, attack])
+
+# Feature extraction
 def extract_features(packet):
 
     protocol = "icmp"
@@ -37,7 +57,7 @@ def extract_features(packet):
     src_ip = packet[IP].src
     dst_ip = packet[IP].dst
 
-    # update connection counters
+    # update counters
     connection_count[src_ip] += 1
     service_count[(src_ip, service)] += 1
 
@@ -85,10 +105,9 @@ def extract_features(packet):
         "dst_host_srv_rerror_rate":0
     }
 
-    return pd.DataFrame([data])
+    return pd.DataFrame([data], columns=columns)
 
-# Packet Processing
-
+# Packet processing
 def process_packet(packet):
 
     if not packet.haslayer(IP):
@@ -97,36 +116,44 @@ def process_packet(packet):
     src = packet[IP].src
     dst = packet[IP].dst
 
+    # Port scan detection
     if packet.haslayer(TCP):
         port_scan_tracker[src].add(packet[TCP].dport)
 
-    # Detect port scan
     if len(port_scan_tracker[src]) > 20:
-        print("⚠ ALERT: Possible PORT SCAN from", src)
+        print("\n⚠ ALERT: Possible PORT SCAN from", src)
+        log_attack(src, dst, "Port Scan")
 
-    features = extract_features(packet)
+    try:
 
-    prediction = model.predict(features)
+        features = extract_features(packet)
 
-    print("Packet captured")
-    print("Source IP:", src)
-    print("Destination IP:", dst)
+        prediction = model.predict(features)
 
-    if prediction[0] == 0:
-        print("Prediction: Normal Traffic\n")
+        if prediction[0] != 0:
 
-    elif prediction[0] == 1:
-        print("⚠ ALERT: DoS Attack\n")
+            print("\n⚠ ALERT DETECTED")
+            print("Source IP:", src)
+            print("Destination IP:", dst)
 
-    elif prediction[0] == 2:
-        print("⚠ ALERT: Probe Attack\n")
+            if prediction[0] == 1:
+                print("Attack Type: DoS\n")
+                log_attack(src, dst, "DoS")
 
-    elif prediction[0] == 3:
-        print("⚠ ALERT: R2L Attack\n")
+            elif prediction[0] == 2:
+                print("Attack Type: Probe\n")
+                log_attack(src, dst, "Probe")
 
-    elif prediction[0] == 4:
-        print("⚠ ALERT: U2R Attack\n")
+            elif prediction[0] == 3:
+                print("Attack Type: R2L\n")
+                log_attack(src, dst, "R2L")
 
-# Start Packet Capture
+            elif prediction[0] == 4:
+                print("Attack Type: U2R\n")
+                log_attack(src, dst, "U2R")
 
-sniff(prn=process_packet, store=False)
+    except Exception as e:
+        print("Prediction error:", e)
+
+# Start capture
+sniff(filter="ip", prn=process_packet, store=False)
