@@ -1,0 +1,12 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Model file generated after training
+ids_model.pkl
+
+# Runtime logs
+traffic_log.csv
