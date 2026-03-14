@@ -10,17 +10,13 @@ model = joblib.load("ids_model.pkl")
 print("Model loaded successfully")
 print("Starting packet capture...\n")
 
-# ==============================
 # Traffic tracking memory
-# ==============================
 
 connection_count = defaultdict(int)
 service_count = defaultdict(int)
 port_scan_tracker = defaultdict(set)
 
-# ==============================
 # Feature Extraction
-# ==============================
 
 def extract_features(packet):
 
@@ -91,10 +87,7 @@ def extract_features(packet):
 
     return pd.DataFrame([data])
 
-
-# ==============================
 # Packet Processing
-# ==============================
 
 def process_packet(packet):
 
@@ -134,9 +127,6 @@ def process_packet(packet):
     elif prediction[0] == 4:
         print("⚠ ALERT: U2R Attack\n")
 
-
-# ==============================
 # Start Packet Capture
-# ==============================
 
 sniff(prn=process_packet, store=False)

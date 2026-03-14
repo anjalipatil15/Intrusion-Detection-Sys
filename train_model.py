@@ -14,10 +14,7 @@ from sklearn.svm import SVC
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import cross_val_score
 
-
-# ==============================
 # 1. Load Dataset
-# ==============================
 
 train_url = "..\\ids\\dataset\\NSL_KDD_Train.csv"
 test_url = "..\\ids\\dataset\\NSL_KDD_Test.csv"
@@ -42,10 +39,7 @@ test = pd.read_csv(test_url, names=columns)
 print("Training Shape:", train.shape)
 print("Test Shape:", test.shape)
 
-
-# ==============================
 # 2. Label Mapping
-# ==============================
 
 label_map = {
 'normal':0,
@@ -70,10 +64,7 @@ label_map = {
 train["label"] = train["label"].map(label_map)
 test["label"] = test["label"].map(label_map)
 
-
-# ==============================
 # 3. Split Features / Labels
-# ==============================
 
 X_train = train.drop("label", axis=1)
 y_train = train["label"]
@@ -81,10 +72,7 @@ y_train = train["label"]
 X_test = test.drop("label", axis=1)
 y_test = test["label"]
 
-
-# ==============================
 # 4. Preprocessing
-# ==============================
 
 categorical_cols = ["protocol_type","service","flag"]
 numeric_cols = [c for c in X_train.columns if c not in categorical_cols]
@@ -96,9 +84,7 @@ preprocessor = ColumnTransformer(
     ]
 )
 
-# ==============================
 # 5. Feature Selection
-# ==============================
 
 rf = RandomForestClassifier(n_estimators=50, random_state=42)
 
@@ -107,9 +93,7 @@ feature_selector = RFE(
     n_features_to_select=13
 )
 
-# ==============================
 # 6. Models
-# ==============================
 
 rf_model = RandomForestClassifier(n_estimators=100)
 knn_model = KNeighborsClassifier()
@@ -124,10 +108,7 @@ voting_model = VotingClassifier(
     voting="hard"
 )
 
-
-# ==============================
 # 7. Pipeline
-# ==============================
 
 pipeline = Pipeline([
     ("preprocess", preprocessor),
@@ -135,21 +116,15 @@ pipeline = Pipeline([
     ("model", voting_model)
 ])
 
-# ==============================
 # 8. Train Model
-# ==============================
 
 pipeline.fit(X_train, y_train)
 
-# ==============================
 # 9. Predictions
-# ==============================
 
 y_pred = pipeline.predict(X_test)
 
-# ==============================
 # 10. Evaluation
-# ==============================
 
 print("\nConfusion Matrix")
 print(confusion_matrix(y_test, y_pred))
