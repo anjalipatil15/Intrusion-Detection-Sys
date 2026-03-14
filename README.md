@@ -1,50 +1,136 @@
-# Intrusion-Detection-Sys
+# Intrusion Detection System (IDS)
 
-A simple network intrusion detection system using NSL-KDD data for training and live packet capture for inference.
+A lightweight **network intrusion detection system** built using the **NSL-KDD dataset**.
+The project trains a machine learning model to detect malicious network traffic and supports **live packet monitoring** with a simple visualization dashboard.
 
-**Project Structure**
-- `dataset/` - NSL-KDD CSV files used for training and testing.
-- `ids_model.pkl` - Trained model artifact created by `train_model.py`.
-- `train_model.py` - Trains the IDS model and saves `ids_model.pkl`.
-- `realtime_capture.py` - Captures live packets and prints predictions.
-- `dashboard.py` - Streamlit dashboard that visualizes `traffic_log.csv`.
-- `traffic_log.csv` - Sample or expected log file for the dashboard.
+---
 
-**Requirements**
-- Python 3.9+ recommended
-- Packages: `pandas`, `numpy`, `scikit-learn`, `joblib`, `scapy`, `streamlit`
-- Windows users may need Npcap installed for `scapy` packet capture.
-- Packet capture usually requires running the terminal as Administrator.
+# Project Structure
 
-**Setup (Windows cmd)**
+```
+Intrusion-Detection-Sys/
+│
+├── dataset/
+│   ├── NSL_KDD_Train.csv
+│   └── NSL_KDD_Test.csv
+│
+├── train_model.py        # trains the IDS model
+├── realtime_capture.py   # captures packets and runs predictions
+├── dashboard.py          # Streamlit dashboard
+├── ids_model.pkl         # trained model (generated after training)
+├── traffic_log.csv       # log file used by the dashboard
+├── requirements.txt
+└── README.md
+```
+
+---
+
+# Requirements
+
+* Python **3.9 or newer**
+* Required packages listed in `requirements.txt`
+
+Windows users capturing packets may also need **Npcap** installed.
+
+---
+
+# Setup (Windows CMD)
+
+Create a virtual environment:
+
 ```cmd
 python -m venv .venv
+```
+
+Activate the environment:
+
+```cmd
 .\.venv\Scripts\activate
-pip install pandas numpy scikit-learn joblib scapy streamlit
+```
 
-Dataset
-Place the NSL-KDD files here:
+Install dependencies:
 
+```cmd
+pip install -r requirements.txt
+```
+
+---
+
+# Dataset
+
+Place the NSL-KDD dataset files inside the `dataset` folder:
+
+```
 dataset\NSL_KDD_Train.csv
 dataset\NSL_KDD_Test.csv
-Note: train_model.py currently loads the dataset from ..\ids\dataset\.... In this repo the dataset is in dataset\..., so update the two paths in train_model.py or run the script from a folder where ..\ids\dataset\ exists.
+```
 
-Train the Model
+---
+
+# Train the Model
+
+Run the training script:
+
+```cmd
+python train_model.py
+```
+
+This trains the model and generates:
+
+```
+ids_model.pkl
+```
+
+---
+
+# Run Real-Time Detection
+
+Start packet monitoring:
+
+```cmd
+python realtime_capture.py
+```
+
+The script captures network packets and prints alerts in the terminal when suspicious traffic is detected.
+
+---
+
+# Run the Dashboard
+
+Start the visualization dashboard:
+
+```cmd
+streamlit run dashboard.py
+```
+
+Open the URL shown in the terminal (usually `http://localhost:8501`).
+
+The dashboard reads from `traffic_log.csv` and displays basic traffic and detection activity.
+
+---
+
+# Quick Start
+
+```
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
 
 python train_model.py
-This generates ids_model.pkl in the project root.
-
-Run Real-Time Capture
-
 python realtime_capture.py
-The script loads ids_model.pkl and prints alerts to the console.
-
-Run the Dashboard
-
 streamlit run dashboard.py
-The dashboard reads traffic_log.csv and refreshes every 2 seconds.
+```
 
-Notes
+---
 
-realtime_capture.py does not currently write to traffic_log.csv. If you want live charts, add logging in realtime_capture.py to append rows with Source IP, Destination IP, Attack.
-If ids_model.pkl is missing, run train_model.py first.
+# Notes
+
+* Run `train_model.py` before starting real-time detection.
+* Packet capture may require running **Command Prompt as Administrator**.
+* For live dashboard updates, `realtime_capture.py` can be extended to append results to `traffic_log.csv`.
+
+---
+
+# License
+
+This project is provided for educational and research purposes.
