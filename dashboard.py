@@ -4,7 +4,7 @@ import time
 
 st.title("Intrusion Detection System Dashboard")
 
-LOG_FILE = "traffic_log.csv"
+LOG_FILE = "logs.csv"
 
 while True:
 
