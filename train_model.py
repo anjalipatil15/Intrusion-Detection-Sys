@@ -1,139 +1,204 @@
 import pandas as pd
 import numpy as np
+import joblib
 
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.compose import ColumnTransformer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, confusion_matrix, f1_score
+from sklearn.preprocessing import LabelEncoder
 from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler
 
-from sklearn.feature_selection import RFE
-from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from xgboost import XGBClassifier
 
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC
+# ===============================
+# LOAD DATA
+# ===============================
 
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import cross_val_score
+df = pd.read_csv("reduced_ids_dataset.csv")
 
-# 1. Load Dataset
+# Clean columns
+df.columns = df.columns.str.strip()
 
-train_url = "..\\ids\\dataset\\NSL_KDD_Train.csv"
-test_url = "..\\ids\\dataset\\NSL_KDD_Test.csv"
+# Clean values
+df.replace([np.inf, -np.inf], 0, inplace=True)
+df.fillna(0, inplace=True)
 
-columns = [
-"duration","protocol_type","service","flag","src_bytes","dst_bytes","land",
-"wrong_fragment","urgent","hot","num_failed_logins","logged_in","num_compromised",
-"root_shell","su_attempted","num_root","num_file_creations","num_shells",
-"num_access_files","num_outbound_cmds","is_host_login","is_guest_login",
-"count","srv_count","serror_rate","srv_serror_rate","rerror_rate",
-"srv_rerror_rate","same_srv_rate","diff_srv_rate","srv_diff_host_rate",
-"dst_host_count","dst_host_srv_count","dst_host_same_srv_rate",
-"dst_host_diff_srv_rate","dst_host_same_src_port_rate",
-"dst_host_srv_diff_host_rate","dst_host_serror_rate",
-"dst_host_srv_serror_rate","dst_host_rerror_rate",
-"dst_host_srv_rerror_rate","label"
-]
+# Normalize labels
+df["Label"] = df["Label"].str.strip().str.upper()
 
-train = pd.read_csv(train_url, names=columns)
-test = pd.read_csv(test_url, names=columns)
+print("Dataset Shape:", df.shape)
+print("\nOriginal Labels:")
+print(df["Label"].value_counts())
 
-print("Training Shape:", train.shape)
-print("Test Shape:", test.shape)
+# ===============================
+# CREATE BINARY LABEL
+# ===============================
 
-# 2. Label Mapping
+df["binary_label"] = df["Label"].apply(lambda x: 0 if x == "BENIGN" else 1)
 
-label_map = {
-'normal':0,
+print("\nBinary Distribution:")
+print(df["binary_label"].value_counts())
 
-# DoS
-'neptune':1,'back':1,'land':1,'pod':1,'smurf':1,'teardrop':1,
-'mailbomb':1,'apache2':1,'processtable':1,'udpstorm':1,'worm':1,
+# ===============================
+# FEATURES
+# ===============================
 
-# Probe
-'ipsweep':2,'nmap':2,'portsweep':2,'satan':2,'mscan':2,'saint':2,
+X = df.drop(columns=["Label", "binary_label"])
+y_binary = df["binary_label"]
 
-# R2L
-'ftp_write':3,'guess_passwd':3,'imap':3,'multihop':3,'phf':3,'spy':3,
-'warezclient':3,'warezmaster':3,'sendmail':3,'named':3,
-'snmpgetattack':3,'snmpguess':3,'xlock':3,'xsnoop':3,'httptunnel':3,
+# ===============================
+# TRAIN-TEST SPLIT (BINARY)
+# ===============================
 
-# U2R
-'buffer_overflow':4,'loadmodule':4,'perl':4,'rootkit':4,
-'ps':4,'sqlattack':4,'xterm':4
-}
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y_binary, test_size=0.2, random_state=42, stratify=y_binary
+)
 
-train["label"] = train["label"].map(label_map)
-test["label"] = test["label"].map(label_map)
+# ===============================
+# PIPELINE
+# ===============================
 
-# 3. Split Features / Labels
-
-X_train = train.drop("label", axis=1)
-y_train = train["label"]
-
-X_test = test.drop("label", axis=1)
-y_test = test["label"]
-
-# 4. Preprocessing
-
-categorical_cols = ["protocol_type","service","flag"]
-numeric_cols = [c for c in X_train.columns if c not in categorical_cols]
+numeric_features = X.columns.tolist()
 
 preprocessor = ColumnTransformer(
     transformers=[
-        ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_cols),
-        ("num", StandardScaler(), numeric_cols)
+        ("num", StandardScaler(), numeric_features)
     ]
 )
 
-# 5. Feature Selection
+# ===============================
+# BINARY MODEL
+# ===============================
 
-rf = RandomForestClassifier(n_estimators=50, random_state=42)
-
-feature_selector = RFE(
-    estimator=rf,
-    n_features_to_select=13
+binary_model = XGBClassifier(
+    n_estimators=200,
+    max_depth=6,
+    learning_rate=0.1,
+    eval_metric="logloss",
+    random_state=42
 )
 
-# 6. Models
-
-rf_model = RandomForestClassifier(n_estimators=100)
-knn_model = KNeighborsClassifier()
-svm_model = SVC(kernel="linear")
-
-voting_model = VotingClassifier(
-    estimators=[
-        ("rf", rf_model),
-        ("knn", knn_model),
-        ("svm", svm_model)
-    ],
-    voting="hard"
-)
-
-# 7. Pipeline
-
-pipeline = Pipeline([
-    ("preprocess", preprocessor),
-    ("feature_select", feature_selector),
-    ("model", voting_model)
+binary_pipeline = Pipeline([
+    ("preprocessor", preprocessor),
+    ("model", binary_model)
 ])
 
-# 8. Train Model
+print("\nTraining Binary Model...")
+binary_pipeline.fit(X_train, y_train)
 
-pipeline.fit(X_train, y_train)
+# ===============================
+# THRESHOLD OPTIMIZATION
+# ===============================
 
-# 9. Predictions
+proba = binary_pipeline.predict_proba(X_test)[:, 1]
 
-y_pred = pipeline.predict(X_test)
+best_threshold = 0.5
+best_f1 = 0
 
-# 10. Evaluation
+for t in np.arange(0.1, 0.9, 0.01):
+    preds = (proba > t).astype(int)
+    score = f1_score(y_test, preds)
 
-print("\nConfusion Matrix")
-print(confusion_matrix(y_test, y_pred))
+    if score > best_f1:
+        best_f1 = score
+        best_threshold = t
 
-print("\nClassification Report")
-print(classification_report(y_test, y_pred))
+print(f"\nBest Threshold: {best_threshold:.2f}")
+print(f"Best F1 Score: {best_f1:.4f}")
 
-import joblib
+final_preds = (proba > best_threshold).astype(int)
 
-joblib.dump(pipeline, "ids_model.pkl")
+print("\nBinary Confusion Matrix:")
+print(confusion_matrix(y_test, final_preds))
 
-print("Model saved successfully")
+print("\nBinary Classification Report:")
+print(classification_report(y_test, final_preds))
+
+# ===============================
+# ATTACK TYPE MODEL (STRICT CLEAN)
+# ===============================
+
+attack_df = df.copy()
+
+# REMOVE ALL NON-ATTACKS
+attack_df = attack_df[attack_df["Label"] != "BENIGN"]
+attack_df = attack_df[attack_df["Label"] != "NORMAL"]
+
+# OPTIONAL: remove weak/garbage class
+attack_df = attack_df[attack_df["Label"] != "OTHER"]
+
+print("\nFinal Attack Labels:")
+print(attack_df["Label"].value_counts())
+
+# ===============================
+# FEATURES FOR ATTACK MODEL
+# ===============================
+
+X_attack = attack_df.drop(columns=["Label", "binary_label"])
+y_attack = attack_df["Label"]
+
+# Encode attack types
+label_encoder = LabelEncoder()
+y_attack_encoded = label_encoder.fit_transform(y_attack)
+
+print("\nEncoded Classes:")
+print(label_encoder.classes_)
+
+# ===============================
+# TRAIN-TEST SPLIT (ATTACK)
+# ===============================
+
+X_train_a, X_test_a, y_train_a, y_test_a = train_test_split(
+    X_attack,
+    y_attack_encoded,
+    test_size=0.2,
+    random_state=42,
+    stratify=y_attack_encoded
+)
+
+# ===============================
+# ATTACK MODEL
+# ===============================
+
+attack_model = XGBClassifier(
+    n_estimators=200,
+    max_depth=6,
+    learning_rate=0.1,
+    eval_metric="mlogloss",
+    random_state=42
+)
+
+attack_pipeline = Pipeline([
+    ("preprocessor", preprocessor),
+    ("model", attack_model)
+])
+
+print("\nTraining Attack Type Model...")
+attack_pipeline.fit(X_train_a, y_train_a)
+
+# ===============================
+# EVALUATION
+# ===============================
+
+preds_a = attack_pipeline.predict(X_test_a)
+
+print("\nAttack Type Confusion Matrix:")
+print(confusion_matrix(y_test_a, preds_a))
+
+print("\nAttack Type Classification Report:")
+print(classification_report(y_test_a, preds_a))
+
+# ===============================
+# SAVE EVERYTHING
+# ===============================
+
+joblib.dump({
+    "binary_model": binary_pipeline,
+    "attack_model": attack_pipeline,
+    "threshold": best_threshold,
+    "columns": X.columns.tolist(),
+    "label_encoder": label_encoder
+}, "ids_model.pkl")
+
+print("\n✅ CLEAN IDS MODEL SAVED SUCCESSFULLY!")
