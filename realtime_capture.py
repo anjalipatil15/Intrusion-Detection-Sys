@@ -1,149 +1,91 @@
-from scapy.all import sniff, IP, TCP, UDP
 import pandas as pd
 import joblib
-import time
-import csv
+from scapy.all import sniff, IP, TCP, UDP
+from datetime import datetime
 
-model = joblib.load("ids_model.pkl")
+# ===============================
+# 1. LOAD MODEL
+# ===============================
+data = joblib.load("ids_model.pkl")
+model = data["model"]
+threshold = data["threshold"]
+columns = data["columns"]
 
-print("Model loaded")
-print("Starting flow capture...\n")
+print("✅ Model loaded successfully")
+print(f"Using threshold: {threshold}")
 
-flows = {}
+# ===============================
+# 2. FEATURE EXTRACTION
+# ===============================
+def extract_features(packet):
+    features = {}
 
-FLOW_TIMEOUT = 2
+    # Initialize all expected columns
+    for col in columns:
+        features[col] = 0
 
-def get_flow_key(packet):
+    try:
+        features["packet_length"] = len(packet)
 
-    src = packet[IP].src
-    dst = packet[IP].dst
+        if packet.haslayer(IP):
+            features["ttl"] = packet[IP].ttl
 
-    sport = 0
-    dport = 0
-    proto = "icmp"
+        if packet.haslayer(TCP):
+            features["src_port"] = packet[TCP].sport
+            features["dst_port"] = packet[TCP].dport
+            features["tcp_flag"] = int(packet[TCP].flags)
 
-    if packet.haslayer(TCP):
-        sport = packet[TCP].sport
-        dport = packet[TCP].dport
-        proto = "tcp"
+        elif packet.haslayer(UDP):
+            features["src_port"] = packet[UDP].sport
+            features["dst_port"] = packet[UDP].dport
 
-    elif packet.haslayer(UDP):
-        sport = packet[UDP].sport
-        dport = packet[UDP].dport
-        proto = "udp"
+    except:
+        pass
 
-    return (src, dst, sport, dport, proto)
+    return features
 
+# ===============================
+# 3. PREDICTION FUNCTION
+# ===============================
+def predict_packet(features):
+    df = pd.DataFrame([features])
+    df = df.reindex(columns=columns, fill_value=0)
 
-def update_flow(packet):
+    proba = model.predict_proba(df)[:, 1][0]
+    pred = 1 if proba > threshold else 0
 
-    key = get_flow_key(packet)
-    length = len(packet)
-    now = time.time()
+    return pred, proba
 
-    if key not in flows:
-        flows[key] = {
-            "start": now,
-            "last": now,
-            "src_bytes": 0,
-            "dst_bytes": 0,
-            "packets": 0
-        }
+# ===============================
+# 4. LOGGING
+# ===============================
+def log_result(features, pred, proba):
+    label = "ATTACK 🚨" if pred == 1 else "NORMAL ✅"
 
-    flow = flows[key]
+    log = {
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "prediction": label,
+        "confidence": round(proba, 3),
+        **features
+    }
 
-    flow["packets"] += 1
-    flow["last"] = now
+    print(log)
 
-    flow["src_bytes"] += length
+    # Save to CSV (for dashboard)
+    df = pd.DataFrame([log])
+    df.to_csv("live_logs.csv", mode='a', index=False, header=False)
 
-
-def check_finished_flows():
-
-    now = time.time()
-
-    finished = []
-
-    for key, flow in flows.items():
-
-        if now - flow["last"] > FLOW_TIMEOUT:
-            finished.append(key)
-
-    for key in finished:
-
-        flow = flows.pop(key)
-
-        duration = flow["last"] - flow["start"]
-
-        src, dst, sport, dport, proto = key
-
-        service = str(dport)
-
-        data = {
-            "duration": duration,
-            "protocol_type": proto,
-            "service": service,
-            "flag": "SF",
-            "src_bytes": flow["src_bytes"],
-            "dst_bytes": flow["dst_bytes"],
-            "land": 1 if src == dst else 0,
-            "wrong_fragment": 0,
-            "urgent": 0,
-            "hot": 0,
-            "num_failed_logins": 0,
-            "logged_in": 1,
-            "num_compromised": 0,
-            "root_shell": 0,
-            "su_attempted": 0,
-            "num_root": 0,
-            "num_file_creations": 0,
-            "num_shells": 0,
-            "num_access_files": 0,
-            "num_outbound_cmds": 0,
-            "is_host_login": 0,
-            "is_guest_login": 0,
-            "count": 1,
-            "srv_count": 1,
-            "serror_rate": 0,
-            "srv_serror_rate": 0,
-            "rerror_rate": 0,
-            "srv_rerror_rate": 0,
-            "same_srv_rate": 0,
-            "diff_srv_rate": 0,
-            "srv_diff_host_rate": 0,
-            "dst_host_count": 1,
-            "dst_host_srv_count": 1,
-            "dst_host_same_srv_rate": 0,
-            "dst_host_diff_srv_rate": 0,
-            "dst_host_same_src_port_rate": 0,
-            "dst_host_srv_diff_host_rate": 0,
-            "dst_host_serror_rate": 0,
-            "dst_host_srv_serror_rate": 0,
-            "dst_host_rerror_rate": 0,
-            "dst_host_srv_rerror_rate": 0
-        }
-
-        df = pd.DataFrame([data])
-
-        prediction = model.predict(df)[0]
-
-        attack = ["Normal","DoS","Probe","R2L","U2R"][prediction]
-
-        print("Connection:", src, "→", dst, "|", attack)
-
-        with open("traffic_log.csv","a",newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([time.time(),src,dst,attack])
-
-
+# ===============================
+# 5. PACKET HANDLER
+# ===============================
 def process_packet(packet):
+    features = extract_features(packet)
+    pred, proba = predict_packet(features)
+    log_result(features, pred, proba)
 
-    if not packet.haslayer(IP):
-        return
+# ===============================
+# 6. START CAPTURE
+# ===============================
+print("🚀 Starting Real-Time IDS... Press Ctrl+C to stop")
 
-    update_flow(packet)
-
-    check_finished_flows()
-
-
-sniff(filter="ip", prn=process_packet, store=False)
+sniff(prn=process_packet, store=False)
