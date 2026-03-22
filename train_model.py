@@ -1,3 +1,5 @@
+import argparse
+
 import pandas as pd
 import numpy as np
 import joblib
@@ -10,6 +12,24 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
 
 from xgboost import XGBClassifier
+
+from ids_inference import attack_probability
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Train IDS binary + attack-type models")
+    p.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Binary decision threshold (0–1). If omitted, pick value that maximizes F1 on the hold-out split.",
+    )
+    return p.parse_args()
+
+
+_cli = parse_args()
+if _cli.threshold is not None and not 0 <= _cli.threshold <= 1:
+    raise SystemExit("--threshold must be between 0 and 1")
 
 # ===============================
 # LOAD DATA
@@ -91,21 +111,26 @@ binary_pipeline.fit(X_train, y_train)
 # THRESHOLD OPTIMIZATION
 # ===============================
 
-proba = binary_pipeline.predict_proba(X_test)[:, 1]
+proba = attack_probability(binary_pipeline, X_test)
 
-best_threshold = 0.5
-best_f1 = 0
+if _cli.threshold is not None:
+    best_threshold = float(_cli.threshold)
+    print(f"\nUsing threshold from CLI: {best_threshold:.2f}")
+else:
+    # Prefer stricter cutoffs so replay/dashboard show fewer false ATTACKs.
+    best_threshold = 0.65
+    best_f1 = 0.0
+    for t in np.arange(0.65, 0.94, 0.01):
+        preds = (proba > t).astype(int)
+        score = f1_score(y_test, preds)
+        if score > best_f1:
+            best_f1 = score
+            best_threshold = t
+    print(f"\nBest Threshold (F1 on hold-out, searched 0.65–0.93): {best_threshold:.2f}")
+    print(f"Best F1 Score: {best_f1:.4f}")
 
-for t in np.arange(0.1, 0.9, 0.01):
-    preds = (proba > t).astype(int)
-    score = f1_score(y_test, preds)
-
-    if score > best_f1:
-        best_f1 = score
-        best_threshold = t
-
-print(f"\nBest Threshold: {best_threshold:.2f}")
-print(f"Best F1 Score: {best_f1:.4f}")
+f1_at_threshold = f1_score(y_test, (proba > best_threshold).astype(int))
+print(f"F1 at saved threshold: {f1_at_threshold:.4f}")
 
 final_preds = (proba > best_threshold).astype(int)
 
