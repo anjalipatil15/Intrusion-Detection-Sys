@@ -1,136 +1,144 @@
-# Intrusion Detection System (IDS)
+# Intrusion Detection System
 
-A lightweight **network intrusion detection system** built using the **NSL-KDD dataset**.
-The project trains a machine learning model to detect malicious network traffic and supports **live packet monitoring** with a simple visualization dashboard.
+This project is a lightweight machine-learning Intrusion Detection System built using a reduced **CICIDS2017** dataset. It trains an IDS model to detect malicious traffic, predicts attack type for detected attacks, and provides a simple Streamlit dashboard for monitoring replayed traffic logs.
 
----
+## Project Structure
 
-# Project Structure
-
-```
+```text
 Intrusion-Detection-Sys/
-│
-├── dataset/
-│   ├── NSL_KDD_Train.csv
-│   └── NSL_KDD_Test.csv
-│
-├── train_model.py        # trains the IDS model
-├── realtime_capture.py   # captures packets and runs predictions
-├── dashboard.py          # Streamlit dashboard
-├── ids_model.pkl         # trained model (generated after training)
-├── traffic_log.csv       # log file used by the dashboard
+├── train_model.py
+├── ids_inference.py
+├── capture.py
+├── log_csv.py
+├── dashboard.py
+├── reduced_ids_dataset.csv
+├── capture.pcap
 ├── requirements.txt
-└── README.md
-```
+├── README.md
+├── live_logs.csv          # generated at runtime
+├── alerts.csv             # generated at runtime
+└── ids_model.pkl          # generated after training
 
----
 
-# Requirements
+Overview
+The project has four main parts:
 
-* Python **3.9 or newer**
-* Required packages listed in `requirements.txt`
+Model training
 
-Windows users capturing packets may also need **Npcap** installed.
+train_model.py loads reduced_ids_dataset.csv
+Cleans missing and infinite values
+Normalizes labels
+Trains:
+a binary XGBoost model for BENIGN vs ATTACK
+an attack-type XGBoost model for malicious classes only
+Saves everything into ids_model.pkl
+Inference utilities
 
----
+ids_inference.py provides helper functions for:
+extracting attack probability from the binary model
+resolving the threshold used for attack decisions
+Includes a default threshold floor to reduce false positives
+Traffic replay / simulation
 
-# Setup (Windows CMD)
+capture.py replays rows from the reduced dataset as simulated live traffic
+Uses the trained model bundle from ids_model.pkl
+Supports:
+configurable threshold
+attack bursts
+Gaussian feature perturbation
+alert logging
+consecutive-attack debouncing
+optional ground-truth logging
+Dashboard
 
-Create a virtual environment:
+dashboard.py reads live_logs.csv and alerts.csv
+Shows:
+total logged events
+attack count
+recent events
+prediction distribution
+attack-type distribution
+alert panel
+optional ground-truth distribution
+Dataset
+This project uses a reduced CSV derived from CICIDS2017, stored as:
 
-```cmd
-python -m venv .venv
-```
+reduced_ids_dataset.csv
+Label handling in training
+BENIGN is mapped to binary label 0
+All other labels are mapped to binary label 1
+BENIGN, NORMAL, and OTHER are excluded from the attack-type model
+Replay attack classes
+The replay logic in capture.py is currently biased toward these demo attack labels when available:
 
-Activate the environment:
-
-```cmd
-.\.venv\Scripts\activate
-```
-
+DOS
+PORTSCAN
+WEBATTACK
+Model Details
+Binary IDS model
+Model: XGBClassifier
+Purpose: classify traffic as benign or malicious
+Attack-type model
+Model: XGBClassifier
+Purpose: classify malicious traffic into attack categories
+Preprocessing
+StandardScaler
+ColumnTransformer
+Pipeline
+Evaluation used in training
+confusion matrix
+classification report
+F1-based threshold selection on hold-out data
+Requirements
+Python 3.9+
+Dependencies from requirements.txt
 Install dependencies:
 
-```cmd
-pip install -r requirements.txt
-```
-
----
-
-# Dataset
-
-Place the NSL-KDD dataset files inside the `dataset` folder:
-
-```
-dataset\NSL_KDD_Train.csv
-dataset\NSL_KDD_Test.csv
-```
-
----
-
-# Train the Model
-
-Run the training script:
-
-```cmd
-python train_model.py
-```
-
-This trains the model and generates:
-
-```
-ids_model.pkl
-```
-
----
-
-# Run Real-Time Detection
-
-Start packet monitoring:
-
-```cmd
-python realtime_capture.py
-```
-
-The script captures network packets and prints alerts in the terminal when suspicious traffic is detected.
-
----
-
-# Run the Dashboard
-
-Start the visualization dashboard:
-
-```cmd
-streamlit run dashboard.py
-```
-
-Open the URL shown in the terminal (usually `http://localhost:8501`).
-
-The dashboard reads from `traffic_log.csv` and displays basic traffic and detection activity.
-
----
-
-# Quick Start
-
-```
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
+pip install xgboost
+Note: train_model.py imports xgboost, but it is not listed in requirements.txt, so install it manually unless you add it there.
+
+How to Run
+1. Train the model
+python train_model.py
+Optional custom threshold:
+
+python train_model.py --threshold 0.80
+This generates:
+
+ids_model.pkl
+2. Run simulated live detection
+python capture.py
+Useful examples:
+
+python capture.py --log-ground-truth --reset-log
+python capture.py --threshold 0.8 --attack-margin 0.05 --consecutive-attacks 2 --alerts
+python capture.py --burst-prob 0.2 --burst-min 3 --burst-max 6
+To see all replay options:
+
+python capture.py --help
+3. Launch the dashboard
+streamlit run dashboard.py
+The dashboard auto-refreshes and reads from:
+
+live_logs.csv
+alerts.csv
+Typical Workflow
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+pip install xgboost
 
 python train_model.py
-python realtime_capture.py
+python capture.py --alerts --reset-log --reset-alerts
 streamlit run dashboard.py
-```
-
----
-
-# Notes
-
-* Run `train_model.py` before starting real-time detection.
-* Packet capture may require running **Command Prompt as Administrator**.
-* For live dashboard updates, `realtime_capture.py` can be extended to append results to `traffic_log.csv`.
-
----
-
-# License
-
-This project is provided for educational and research purposes.
+Notes
+Run train_model.py before capture.py
+The current detection flow uses dataset replay, not full live packet feature extraction
+capture.pcap exists in the repository, but the active IDS flow is driven by CSV replay
+scapy is installed, but the main implemented demo path uses the reduced dataset and dashboard logs
+log_csv.py is used to safely append rows to CSV files while preserving headers
+License
+This project is intended for educational and research purposes.
