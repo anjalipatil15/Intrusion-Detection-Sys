@@ -9,4 +9,5 @@ __pycache__/
 ids_model.pkl
 
 # Runtime logs
-traffic_log.csv
+live_logs.csv
+alerts.csv
