@@ -1,6 +1,6 @@
 # Intrusion Detection System
 
-This project is a lightweight machine-learning Intrusion Detection System built using a reduced **CICIDS2017** dataset. It trains an IDS model to detect malicious traffic, predicts attack type for detected attacks, and provides a simple Streamlit dashboard for monitoring replayed traffic logs.
+This project is a machine-learning Intrusion Detection System built using a reduced **CICIDS2017** dataset. It trains an IDS model to detect malicious traffic, predicts attack type for detected attacks, and provides a simple Streamlit dashboard for monitoring replayed traffic logs. 
 
 ## Project Structure
 
@@ -116,8 +116,6 @@ python -m venv .venv
 pip install -r requirements.txt
 pip install xgboost
 ```
-
-> Note: `train_model.py` imports `xgboost`, but it is not listed in `requirements.txt`, so install it manually unless you add it there.
 
 ## How to Run
 
