@@ -7,12 +7,10 @@ This project is a machine-learning Intrusion Detection System built using a redu
 ```text
 Intrusion-Detection-Sys/
 ├── train_model.py
-├── ids_inference.py
 ├── capture.py
 ├── log_csv.py
 ├── dashboard.py
 ├── reduced_ids_dataset.csv
-├── capture.pcap
 ├── requirements.txt
 ├── README.md
 ├── live_logs.csv
@@ -33,13 +31,7 @@ The project has four main parts:
      - an attack-type `XGBClassifier` for malicious classes only
    - Saves everything into `ids_model.pkl`
 
-2. **Inference utilities**
-   - `ids_inference.py` provides helper functions for:
-     - extracting attack probability from the binary model
-     - resolving the threshold used for attack decisions
-   - Includes a default threshold floor to reduce false positives
-
-3. **Traffic replay / simulation**
+2. **Traffic replay / simulation**
    - `capture.py` replays rows from the reduced dataset as simulated live traffic
    - Uses the trained model bundle from `ids_model.pkl`
    - Supports:
@@ -50,7 +42,7 @@ The project has four main parts:
      - consecutive-attack debouncing
      - optional ground-truth logging
 
-4. **Dashboard**
+3. **Dashboard**
    - `dashboard.py` reads `live_logs.csv` and `alerts.csv`
    - Shows:
      - total logged events
@@ -69,7 +61,6 @@ This project uses a reduced CSV derived from **CICIDS2017**, stored as `reduced_
 
 - `BENIGN` is mapped to binary label `0`
 - All other labels are mapped to binary label `1`
-- `BENIGN`, `NORMAL`, and `OTHER` are excluded from the attack-type model
 
 ### Replay attack classes
 
@@ -114,7 +105,6 @@ Install dependencies:
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
-pip install xgboost
 ```  
 
 ## How to Run
@@ -178,8 +168,6 @@ streamlit run dashboard.py
 
 - Run `train_model.py` before `capture.py`
 - The current detection flow uses dataset replay, not full live packet feature extraction
-- `capture.pcap` exists in the repository, but the active IDS flow is driven by CSV replay
-- `scapy` is installed, but the main implemented demo path uses the reduced dataset and dashboard logs
 - `log_csv.py` is used to safely append rows to CSV files while preserving headers
 
 ## License
