@@ -11,5 +11,3 @@ ids_model.pkl
 # Runtime logs
 live_logs.csv
 alerts.csv
-
-ids_inference.py
