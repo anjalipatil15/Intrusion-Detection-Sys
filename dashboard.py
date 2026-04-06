@@ -14,7 +14,6 @@ EXPECTED_COLS = ["timestamp", "prediction", "attack_type", "confidence"]
 
 
 def normalize_prediction(series: pd.Series) -> pd.Series:
-    """Map log values to ATTACK vs NORMAL."""
     out = []
     for x in series:
         if pd.isna(x):
@@ -32,6 +31,33 @@ def normalize_prediction(series: pd.Series) -> pd.Series:
         else:
             out.append("NORMAL")
     return pd.Series(out, index=series.index, dtype="object")
+
+
+def highlight_attack_rows(row):
+    pred = str(row.get("prediction", "")).strip().upper()
+    if pred.startswith("ATTACK") or pred == "1":
+        return [
+            "background-color: rgba(255, 77, 77, 0.18); color: #ffffff; font-weight: 600;"
+            for _ in row
+        ]
+    return ["" for _ in row]
+
+
+def highlight_alert_rows(row):
+    return [
+        "background-color: rgba(255, 165, 0, 0.18); color: #ffffff; font-weight: 600;"
+        for _ in row
+    ]
+
+
+def styled_table(df: pd.DataFrame, mode: str = "logs"):
+    if df.empty:
+        return df
+    if mode == "logs":
+        return df.style.apply(highlight_attack_rows, axis=1)
+    if mode == "alerts":
+        return df.style.apply(highlight_alert_rows, axis=1)
+    return df
 
 
 def _read_csv_raw(path: str) -> pd.DataFrame:
@@ -55,7 +81,6 @@ def _read_csv_raw(path: str) -> pd.DataFrame:
 
 
 def _prediction_column_trustworthy(s: pd.Series) -> bool:
-    """False when 'prediction' is misaligned (e.g. holds floats / timestamps)."""
     s = s.dropna()
     if len(s) == 0:
         return False
@@ -76,7 +101,6 @@ def _prediction_column_trustworthy(s: pd.Series) -> bool:
 
 
 def _repair_eight_column_mess(df: pd.DataFrame) -> Optional[pd.DataFrame]:
-    """First row was data but became header; real names stuck as last 4 columns."""
     cols = [str(c).strip() for c in df.columns]
     if len(cols) < 8:
         return None
@@ -206,6 +230,7 @@ def render_alerts_panel() -> None:
             "--attack-margin 0.05 --consecutive-attacks 2 --alerts`"
         )
         return
+
     c4, c5 = st.columns(2)
     c4.metric("Alert events", len(alerts_df))
     try:
@@ -213,19 +238,23 @@ def render_alerts_panel() -> None:
     except Exception:
         last_a = "—"
     c5.metric("Last alert", last_a)
+
+    st.markdown("#### Alert log")
     try:
-        st.dataframe(alerts_df.tail(75), use_container_width=True)
+        st.dataframe(
+            styled_table(alerts_df.tail(75), mode="alerts"),
+            use_container_width=True,
+            height=320
+        )
     except TypeError:
-        st.dataframe(alerts_df.tail(75))
+        st.dataframe(styled_table(alerts_df.tail(75), mode="alerts"))
 
 
 def render_dashboard() -> None:
     df = load_log(LOG_FILE)
 
     if df.empty:
-        st.info(
-            f"No rows in **{LOG_FILE}** yet. Run `python capture.py` in another terminal."
-        )
+        st.info(f"No rows in **{LOG_FILE}** yet. Run `python capture.py` in another terminal.")
     else:
         for col in EXPECTED_COLS:
             if col not in df.columns:
@@ -249,9 +278,13 @@ def render_dashboard() -> None:
 
         st.subheader("Recent events")
         try:
-            st.dataframe(df[display_cols].tail(100), use_container_width=True)
+            st.dataframe(
+                styled_table(df[display_cols].tail(100), mode="logs"),
+                use_container_width=True,
+                height=420
+            )
         except TypeError:
-            st.dataframe(df[display_cols].tail(100))
+            st.dataframe(styled_table(df[display_cols].tail(100), mode="logs"))
 
         st.subheader("Prediction distribution")
         safe_bar_chart(pred_clean.value_counts())
@@ -272,7 +305,6 @@ def render_dashboard() -> None:
 
     render_alerts_panel()
 
-
 st.set_page_config(page_title="IDS Dashboard", layout="wide")
 st.title("Intrusion Detection System")
 
@@ -290,3 +322,15 @@ else:
         st.rerun()
     else:
         st.experimental_rerun()
+
+st.markdown(
+    """
+    <hr style="margin-top: 40px; margin-bottom: 10px;">
+
+    <div style='text-align: center; font-size: 14px; color: #aaa;'>
+        Intrusion Detection System • Built with Streamlit <br>
+        Real-time Monitoring | Threat Detection
+    </div>
+    """,
+    unsafe_allow_html=True
+)
